@@ -3,6 +3,7 @@ using MonoTorrent.BEncoding;
 using MonoTorrent.Client;
 using MonoTorrent.Dht;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
@@ -14,6 +15,8 @@ namespace AniHubLib
 {
     public class TorrentDownloader
     {
+        const int port = 54321;
+
         static string dhtNodeFile;
         static string basePath;
         static string downloadsPath;
@@ -23,7 +26,7 @@ namespace AniHubLib
         static List<TorrentManager> torrents;	// The list where all the torrentManagers will be stored that the engine gives us
         static Top10Listener listener;			// This is a subclass of TraceListener which remembers the last 20 statements sent to it
 
-        public void Run()
+        public void Run(IEnumerable<Uri> magnetUris)
         {
             /* Generate the paths to the folder we will save .torrent files to and where we download files to */
             basePath = Environment.CurrentDirectory;						// This is the directory we are currently in
@@ -41,17 +44,11 @@ namespace AniHubLib
             AppDomain.CurrentDomain.UnhandledException += (object sender, UnhandledExceptionEventArgs e) => { Console.WriteLine(e.ExceptionObject); Shutdown().Wait(); };
             Thread.GetDomain().UnhandledException += (object sender, UnhandledExceptionEventArgs e) => { Console.WriteLine(e.ExceptionObject); Shutdown().Wait(); };
 
-            StartEngine().Wait();
+            StartEngine(magnetUris).Wait();
         }
 
-        private static async Task StartEngine()
+        private static async Task StartEngine(IEnumerable<Uri> magnetUris)
         {
-            int port;
-            Torrent torrent = null;
-            // Ask the user what port they want to use for incoming connections
-            //Console.Write($"{Environment.NewLine}Choose a listen port: ");
-            //while (!int.TryParse(Console.ReadLine(), out port)) { }
-
             // Create the settings which the engine will use
             // downloadsPath - this is the path where we will save all the files to
             // port - this is the port we listen for connections on
@@ -107,43 +104,27 @@ namespace AniHubLib
                 fastResume = new BEncodedDictionary();
             }
 
-            // For each file in the torrents path that is a .torrent file, load it into the engine.
-            foreach (string file in Directory.GetFiles(torrentsPath))
+            // For each magnet uri, load it into the engine.
+            foreach (Uri magnetUri in magnetUris)
             {
-                if (file.EndsWith(".torrent", StringComparison.OrdinalIgnoreCase))
-                {
-                    try
-                    {
-                        // Load the .torrent from the file into a Torrent instance
-                        // You can use this to do preprocessing should you need to
-                        torrent = await Torrent.LoadAsync(file);
-                        Console.WriteLine(torrent.InfoHash.ToString());
-                    }
-                    catch (Exception e)
-                    {
-                        Console.Write("Couldn't decode {0}: ", file);
-                        Console.WriteLine(e.Message);
-                        continue;
-                    }
-                    // When any preprocessing has been completed, you create a TorrentManager
-                    // which you then register with the engine.
-                    TorrentManager manager = new TorrentManager(torrent, downloadsPath, torrentDefaults);
-                    if (fastResume.ContainsKey(torrent.InfoHash.ToHex()))
-                        manager.LoadFastResume(new FastResume((BEncodedDictionary)fastResume[torrent.InfoHash.ToHex()]));
-                    await engine.Register(manager);
+                MagnetLink magnet = MagnetLink.FromUri(magnetUri);
 
-                    // Store the torrent manager in our list so we can access it later
-                    torrents.Add(manager);
-                    manager.PeersFound += manager_PeersFound;
-                }
+                // When any preprocessing has been completed, you create a TorrentManager
+                // which you then register with the engine.
+                TorrentManager manager = new TorrentManager(magnet, downloadsPath, torrentDefaults, torrentsPath);
+                if (fastResume.ContainsKey(magnet.InfoHash.ToHex()))
+                    manager.LoadFastResume(new FastResume((BEncodedDictionary)fastResume[magnet.InfoHash.ToHex()]));
+                await engine.Register(manager);
+
+                // Store the torrent manager in our list so we can access it later
+                torrents.Add(manager);
+                manager.PeersFound += manager_PeersFound;
             }
 
-            // If we loaded no torrents, just exist. The user can put files in the torrents directory and start
-            // the client again
+            // If we loaded no torrents, just exit.
             if (torrents.Count == 0)
             {
-                Console.WriteLine("No torrents found in the Torrents directory");
-                Console.WriteLine("Exiting...");
+                Console.WriteLine("No torrents found");
                 engine.Dispose();
                 return;
             }
