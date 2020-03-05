@@ -8,4 +8,16 @@
     <LangVersion>8.0</LangVersion>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="LibVLCSharp" Version="3.4.2" />
+    <PackageReference Include="LibVLCSharp.WPF" Version="3.4.2" />
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.8.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms.VisualStudio.15.0">
+      <HintPath>..\..\..\..\..\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\Common7\IDE\System.Windows.Forms.VisualStudio.15.0.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
 </Project>
